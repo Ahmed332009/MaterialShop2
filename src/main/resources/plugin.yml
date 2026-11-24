@@ -1,0 +1,23 @@
+name: MaterialShop
+main: com.banglaverse.materialshop.MaterialShop
+version: ${project.version}
+api-version: '1.21'
+description: Barter shops that trade materials for materials. No money.
+commands:
+  shop:
+    description: Open the MaterialShop menu
+    aliases: [ms, materialshop]
+  shopadmin:
+    description: MaterialShop administration
+    aliases: [msadmin]
+permissions:
+  materialshop.use:
+    default: true
+  materialshop.create:
+    default: true
+  materialshop.collect:
+    default: true
+  materialshop.admin:
+    default: op
+  materialshop.admin.bypass:
+    default: op

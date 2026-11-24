@@ -1,0 +1,140 @@
+package com.banglaverse.materialshop;
+
+import org.bukkit.Bukkit;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/** Trade logic. Everything runs on the main thread, so a trade is validated and applied in one step. */
+public final class Trade {
+    private Trade() {}
+
+    public static int count(Inventory inv, ItemStack t) {
+        int n = 0;
+        for (ItemStack s : inv.getStorageContents()) if (s != null && s.isSimilar(t)) n += s.getAmount();
+        return n;
+    }
+
+    public static ItemStack[] snapshot(Inventory inv) {
+        ItemStack[] c = inv.getStorageContents();
+        ItemStack[] r = new ItemStack[c.length];
+        for (int i = 0; i < c.length; i++) r[i] = c[i] == null ? null : c[i].clone();
+        return r;
+    }
+
+    public static boolean remove(Inventory inv, ItemStack t, int amount) {
+        if (count(inv, t) < amount) return false;
+        ItemStack[] c = snapshot(inv);
+        int left = amount;
+        for (int i = 0; i < c.length && left > 0; i++) {
+            ItemStack s = c[i];
+            if (s != null && s.isSimilar(t)) {
+                int take = Math.min(left, s.getAmount());
+                if (take == s.getAmount()) c[i] = null;
+                else s.setAmount(s.getAmount() - take);
+                left -= take;
+            }
+        }
+        inv.setStorageContents(c);
+        return true;
+    }
+
+    public static boolean fits(Inventory inv, ItemStack t, int total) {
+        int max = t.getMaxStackSize();
+        int free = 0;
+        for (ItemStack s : inv.getStorageContents()) {
+            if (s == null || s.getType().isAir()) free += max;
+            else if (s.isSimilar(t)) free += Math.max(0, max - s.getAmount());
+        }
+        return free >= total;
+    }
+
+    public static List<ItemStack> stacks(ItemStack t, int total) {
+        List<ItemStack> out = new ArrayList<>();
+        int max = t.getMaxStackSize();
+        while (total > 0) {
+            ItemStack n = t.clone();
+            int a = Math.min(max, total);
+            n.setAmount(a);
+            out.add(n);
+            total -= a;
+        }
+        return out;
+    }
+
+    public static int maxQty(MaterialShop pl, Player buyer, Shop shop, Listing l, int payIdx) {
+        int cap = pl.getConfig().getInt("max-quantity", 2304);
+        ItemStack pay = l.payments.get(payIdx);
+        int byPay = count(buyer.getInventory(), pay) / Math.max(1, pay.getAmount());
+        int byStock = cap;
+        if (!shop.isAdmin()) {
+            Inventory stock = pl.shops().stockInv(shop);
+            byStock = stock == null ? 0 : count(stock, l.item) / Math.max(1, l.item.getAmount());
+        }
+        return Math.max(0, Math.min(cap, Math.min(byPay, byStock)));
+    }
+
+    /** Returns null on success, otherwise a message key suffix (used as "err-" + result). */
+    public static String execute(MaterialShop pl, Player buyer, Shop shop, Listing l, int payIdx, int qty) {
+        if (!pl.shops().exists(shop) || shop.find(l.id) != l || payIdx < 0 || payIdx >= l.payments.size()) return "gone";
+        if (qty < 1 || qty > pl.getConfig().getInt("max-quantity", 2304)) return "bad-qty";
+        if (!shop.isAdmin() && shop.owner.equals(buyer.getUniqueId())) return "own-shop";
+
+        ItemStack pay = l.payments.get(payIdx);
+        int payTotal = pay.getAmount() * qty;
+        int itemTotal = l.item.getAmount() * qty;
+
+        Inventory stock = null;
+        if (!shop.isAdmin()) {
+            stock = pl.shops().stockInv(shop);
+            if (stock == null) return "broken";
+            if (count(stock, l.item) < itemTotal) return "no-stock";
+            if (!pl.shops().canStore(shop.owner, pay, payTotal)) return "box-full";
+        }
+
+        Inventory bi = buyer.getInventory();
+        if (count(bi, pay) < payTotal) return "no-payment";
+
+        ItemStack[] snap = snapshot(bi);
+        if (!remove(bi, pay, payTotal)) return "no-payment";
+        if (!fits(bi, l.item, itemTotal)) {
+            bi.setStorageContents(snap);
+            return "no-room";
+        }
+        Map<Integer, ItemStack> left = bi.addItem(stacks(l.item, itemTotal).toArray(new ItemStack[0]));
+        if (!left.isEmpty()) {
+            bi.setStorageContents(snap);
+            return "no-room";
+        }
+        if (stock != null && !remove(stock, l.item, itemTotal)) {
+            bi.setStorageContents(snap);
+            return "no-stock";
+        }
+        if (!shop.isAdmin()) {
+            pl.shops().store(shop.owner, pay, payTotal);
+            pl.shops().saveBoxes();
+        }
+
+        String itemName = Text.itemName(l.item);
+        String payName = Text.itemName(pay);
+        pl.log(buyer.getName() + " (" + buyer.getUniqueId() + ") bought " + itemTotal + "x " + itemName
+                + " for " + payTotal + "x " + payName + " from "
+                + (shop.isAdmin() ? "ADMIN" : shop.owner.toString()) + " shop=" + shop.id + " \"" + shop.name + "\" at "
+                + buyer.getWorld().getName() + " " + buyer.getLocation().getBlockX() + " "
+                + buyer.getLocation().getBlockY() + " " + buyer.getLocation().getBlockZ());
+        pl.send(buyer, "trade-success", "qty", String.valueOf(itemTotal), "item", itemName,
+                "pay", payTotal + "x " + payName);
+        if (!shop.isAdmin()) {
+            Player o = Bukkit.getPlayer(shop.owner);
+            if (o != null) {
+                pl.send(o, "trade-sold", "buyer", buyer.getName(), "qty", String.valueOf(itemTotal),
+                        "item", itemName, "shop", shop.name);
+            }
+        }
+        return null;
+    }
+}
