@@ -12,7 +12,14 @@ Barter shop plugin for Paper. Players trade materials for materials. No money, n
 - Atomic trades with rollback, transaction log, protected shop containers, no hopper or explosion access.
 
 ## Install
-Build with `mvn package` or download the jar from the GitHub Actions artifact. Put the jar in `plugins/`.
+The plugin targets the Paper 1.21.11 API with Java 21, the same stack as its companion plugin MaterialClaim.
+
+Build with `mvn package` (or let the GitHub Actions `Build` workflow do it) and put
+`target/MaterialShop-0.1.0.jar` in `plugins/`. Ready-made jars are on the latest Actions artifact
+(`MaterialShop-jar`) and on the release page once a `v*` tag is pushed.
+
+Status: the workflow is green and the jar is verified structurally, but the plugin has **not been tested
+on a live server yet** - run the checklist at the bottom before trusting it.
 
 ## Commands
 | Command | Use |
@@ -38,7 +45,14 @@ Build with `mvn package` or download the jar from the GitHub Actions artifact. P
 ## Known limits in 0.1.0
 - No MaterialClaim or WorldGuard API integration. Shop creation asks other plugins by firing a BlockBreakEvent, which land-claim plugins normally cancel.
 - Items placed in the Add listing menu are returned on close, but would be lost in a hard server crash at that moment.
-- Admin shop payment items are consumed.
+- Admin shop payment items are consumed (that is what "infinite stock" costs).
+- A trade hands over the goods and then removes them from the shop container; a server crash in that
+  instant could duplicate one trade. Everything else is validated and rolled back in memory.
+- `/shopadmin remove` leaves any shop villager behind; it then reports that the shop is gone.
 
 ## Manual test checklist
-Normal trade, two payment options, custom quantity, Max, full inventory, offline seller, buying from own shop, two buyers in a row, restart persistence, named and enchanted item, backpack item, Bedrock tap-only use, hopper under shop chest, explosion near shop chest, placing a chest next to a shop chest.
+Normal trade, two payment options, custom quantity (including typing `cancel`), Max, full inventory,
+offline seller, buying from your own shop, two buyers in a row, restart persistence, named and enchanted
+item, backpack item, Bedrock tap-only use, hopper under the shop chest, explosion near the shop chest,
+placing a chest next to a shop chest, dragging items into the add-listing slots, clicking Confirm twice
+in a row, and collecting from the box with a full inventory.

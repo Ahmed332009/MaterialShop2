@@ -276,12 +276,14 @@ public class Gui {
             else if (slot == 22) { qty = Math.max(1, Trade.maxQty(pl, p, shop, l, payIdx)); render(); }
             else if (slot == 23) {
                 pl.prompt(p, "prompt-qty", text -> {
-                    try {
-                        int q = Integer.parseInt(text.trim());
-                        if (q < 1) throw new NumberFormatException();
-                        qty = Math.min(q, pl.getConfig().getInt("max-quantity", 2304));
-                    } catch (NumberFormatException ex) {
-                        pl.send(p, "err-bad-qty");
+                    if (!text.trim().equalsIgnoreCase("cancel")) {
+                        try {
+                            int q = Integer.parseInt(text.trim());
+                            if (q < 1) throw new NumberFormatException();
+                            qty = Math.min(q, pl.getConfig().getInt("max-quantity", 2304));
+                        } catch (NumberFormatException ex) {
+                            pl.send(p, "err-bad-qty");
+                        }
                     }
                     render();
                     reopen(p, this);
@@ -363,6 +365,7 @@ public class Gui {
     class SetupMenu extends Menu {
         final Shop shop;
         final int page;
+        boolean confirmed = false;
 
         SetupMenu(Shop shop, int page) {
             this.shop = shop;
@@ -380,7 +383,7 @@ public class Gui {
             inv.setItem(22, Text.icon(Material.LIME_CONCRETE, "&aConfirm listing"));
         }
 
-        private boolean isSlot(int s) {
+        boolean isSlot(int s) {
             if (s == SELL_SLOT) return true;
             for (int x : PAY_SLOTS) if (x == s) return true;
             return false;
@@ -408,7 +411,7 @@ public class Gui {
         }
 
         private void confirm(Player p) {
-            if (!canManage(p, shop)) return;
+            if (confirmed || !canManage(p, shop)) return;
             ItemStack sell = inv.getItem(SELL_SLOT);
             if (sell == null || sell.getType().isAir()) { pl.send(p, "setup-no-item"); return; }
             List<ItemStack> pays = new ArrayList<>();
@@ -427,6 +430,7 @@ public class Gui {
             }
             if (shop.listings.size() >= pl.getConfig().getInt("max-listings", 100)) { pl.send(p, "setup-too-many"); return; }
 
+            confirmed = true;
             shop.listings.add(new Listing(shop.nextListingId++, sell, pays));
             pl.shops().save();
 
@@ -485,10 +489,13 @@ public class Gui {
             if (slot >= PAGE || slot >= box.size()) return;
             ItemStack it = box.get(slot).clone();
             box.remove(slot);
-            ItemStack leftover = null;
-            for (ItemStack l : p.getInventory().addItem(it).values()) leftover = l;
-            if (leftover != null) box.add(slot, leftover);
-            else pl.send(p, "collected");
+            List<ItemStack> leftover = new ArrayList<>(p.getInventory().addItem(it).values());
+            if (!leftover.isEmpty()) {
+                box.addAll(Math.min(slot, box.size()), leftover);
+                pl.send(p, "collect-no-room");
+            } else {
+                pl.send(p, "collected");
+            }
             pl.shops().saveBoxes();
             render();
         }

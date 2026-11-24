@@ -35,7 +35,19 @@ public class GuiListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onDrag(InventoryDragEvent e) {
-        if (e.getView().getTopInventory().getHolder(false) instanceof Gui.Menu) e.setCancelled(true);
+        Inventory top = e.getView().getTopInventory();
+        if (!(top.getHolder(false) instanceof Gui.Menu m)) return;
+        if (m instanceof Gui.SetupMenu s) {
+            // the add-listing menu has free slots; a drag may only touch those
+            for (int raw : e.getRawSlots()) {
+                if (raw < top.getSize() && !s.isSlot(raw)) {
+                    e.setCancelled(true);
+                    return;
+                }
+            }
+            return;
+        }
+        e.setCancelled(true);
     }
 
     @EventHandler
