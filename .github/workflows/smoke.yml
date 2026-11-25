@@ -123,7 +123,10 @@ jobs:
             fail 'an exception was thrown'
           fi
           grep -q 'Only players can use this' out.log || fail '/shop did not answer a console sender'
-          grep -q 'Chest shops are disabled\|Look at a chest' out.log || fail '/shop chest create did not answer'
+          # /shop, /shop market, /shop list and /shop chest create must each answer the console
+          PLAYER_ONLY=$(grep -c 'Only players can use this' out.log)
+          echo "console answers: $PLAYER_ONLY"
+          [ "$PLAYER_ONLY" -ge 4 ] || fail 'not every /shop subcommand answered the console'
           grep -q 'MaterialShop' out.log || fail 'no MaterialShop output'
           echo '--- shops.yml written at shutdown ---'
           cat plugins/MaterialShop/shops.yml
