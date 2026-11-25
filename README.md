@@ -18,8 +18,9 @@ Build with `mvn package` (or let the GitHub Actions `Build` workflow do it) and 
 `target/MaterialShop-0.1.0.jar` in `plugins/`. Ready-made jars are on the latest Actions artifact
 (`MaterialShop-jar`) and on the release page once a `v*` tag is pushed.
 
-Status: the workflow is green and the jar is verified structurally, but the plugin has **not been tested
-on a live server yet** - run the checklist at the bottom before trusting it.
+Status: the workflow is green, the jar is verified structurally, and a CI smoke test boots a real Paper
+1.21.11 server where the plugin loads, enables, registers its commands and persists an admin shop. No
+player has clicked through the menus yet - run the checklist at the bottom before trusting it.
 
 ## Commands
 | Command | Use |

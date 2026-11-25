@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — first build that actually compiles (never tested in game)
+## 0.1.0 — first build that actually compiles (loaded on a real Paper server, trades untested)
 
 Build and toolchain (handoff step 1)
 - Targets the Paper 1.21.11 API (`1.21.11-R0.1-SNAPSHOT`) with Java 21, copied from the MaterialClaim
@@ -10,6 +10,17 @@ Build and toolchain (handoff step 1)
 - GitHub Actions: Java 21 workflow, first green run on branch `arena/7eff1135-materialshop2`, jar plus
   artifact upload, a jar sanity check (plugin.yml present, classes present, no unexpanded placeholder)
   and a release step for `v*` tags.
+
+Automated smoke test on a real Paper 1.21.11 server (new `.github/workflows/smoke.yml`)
+- The workflow downloads the Paper server, installs the built jar, boots it on a flat world, waits for
+  `Done (`, then sends `shopadmin create smoketest`, `shopadmin list`, `shop list`, `shop`, `plugins`
+  and `stop` through the console before checking the log and `plugins/MaterialShop/shops.yml`.
+- Result: `Loading server plugin MaterialShop v0.1.0`, `MaterialShop enabled: 0 shops loaded.`,
+  `Done (27.747s)`, `Admin shop smoketest created.`, `/shop` from console answers
+  "Only players can use this.", no `Exception`, no `Unknown command`, `shops.yml` written at shutdown
+  with `name: smoketest`. So plugin.yml, api-version, command registration, config/messages loading and
+  YAML persistence are all exercised. Menus, trades, Geyser taps and player permissions are still only
+  covered by the manual checklist.
 
 Fixed while re-reading `Trade.java` and `Gui.java` (handoff step 3)
 - Add-listing menu: the click guard was not the only hole. Dragging was cancelled for *every* menu, so

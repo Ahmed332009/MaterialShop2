@@ -15,7 +15,10 @@ Toolchain now matches MaterialClaim (handoff step 1, done):
 | plugin.yml api-version | `'1.21'` | `'1.21'` |
 | CI Java | 21 | 21 |
 
-Nothing was tested on a live Paper server. See "Not done / untested" below.
+A real Paper 1.21.11 server has booted this jar in CI: the plugin loads, enables, registers its
+commands, answers `/shop` from the console, creates and persists an admin shop, and shuts down cleanly
+with no exception (`.github/workflows/smoke.yml`, evidence in the run's check annotation). Menus and
+actual trades are still untested. See "Not done / untested" below.
 
 ## What changed this session
 
@@ -29,13 +32,17 @@ Nothing was tested on a live Paper server. See "Not done / untested" below.
    missing `collect-no-room` message). Details in `CHANGELOG.md`.
 4. Audited the trade path for duplication and item loss; the sequence in `Trade.execute` is sound (see
    the changelog note) and was left unchanged.
+5. Added `.github/workflows/smoke.yml`: it downloads the Paper 1.21.11 server, installs the jar, boots a
+   flat world, waits for `Done (`, drives a few console commands, then asserts on the log and on
+   `plugins/MaterialShop/shops.yml`. It is green, which is the first real evidence that the plugin
+   loads and its commands work outside of a compile. 
 
 ## Not done / untested
 
-- No live server test at all: trades, menus, Bedrock/Geyser taps, permissions, persistence and the
-  protection listeners are **unverified in game**.
+- No player-driven test yet: menus, trades, the collect box, Bedrock/Geyser taps, permissions and the
+  protection listeners are **unverified in game**. Only the console path is covered by the smoke test.
 - No automated tests. The README checklist is the acceptance test.
-- The jar has not been opened on a server; it has only been verified structurally in CI.
+- The jar is verified structurally in CI and loads on a real Paper server, but nothing has clicked it.
 - No MaterialClaim or WorldGuard API integration. Shop creation still asks other plugins by firing a
   `BlockBreakEvent`, which claim plugins normally cancel.
 - Transaction log rotation is by size only; there is no daily rotation.
@@ -43,8 +50,9 @@ Nothing was tested on a live Paper server. See "Not done / untested" below.
 
 ## Exact next steps, in order
 
-1. Download the jar from the Actions artifact `MaterialShop-jar` (or the release once a `v0.1.0` tag is
-   pushed) and drop it in `plugins/` on a Paper 1.21.11 (26.3) test server with Java 21.
+1. Download the jar from the release `v0.1.0` (or the Actions artifact `MaterialShop-jar`) and drop it in
+   `plugins/` on a Paper 1.21.11 (26.3) test server with Java 21. The smoke workflow already proves it
+   loads; join with a real player next.
 2. Run `/shopadmin create test`, add listings through the menu, then work through the README manual test
    checklist in order. Watch the console and `plugins/MaterialShop/logs/transactions.log`.
 3. Fix anything that breaks in the file listed below, commit to this branch, and let Actions rebuild.
@@ -68,6 +76,7 @@ Nothing was tested on a live Paper server. See "Not done / untested" below.
 | `src/main/resources/config.yml` | limits, blacklist/whitelist, value table, log size |
 | `src/main/resources/messages.yml` | every player-facing string; add a key here for any new message |
 | `.github/workflows/build.yml` | build, jar verification, artifact, release on `v*` |
+| `.github/workflows/smoke.yml` | boots a real Paper server with the jar and asserts the log |
 
 ## Continuation prompt (paste into the next agent)
 
