@@ -58,6 +58,8 @@ jobs:
         run: |
           set -e
           JAR=$(ls target/MaterialShop-*.jar | head -n 1)
+          NOTES=.github/release-notes.md
+          [ -f "$NOTES" ] || NOTES=CHANGELOG.md
           gh release create "$GITHUB_REF_NAME" "$JAR" \
             --title "MaterialShop ${GITHUB_REF_NAME#v}" \
-            --notes-file CHANGELOG.md
+            --notes-file "$NOTES"

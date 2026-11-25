@@ -77,6 +77,7 @@ actual trades are still untested. See "Not done / untested" below.
 | `src/main/resources/messages.yml` | every player-facing string; add a key here for any new message |
 | `.github/workflows/build.yml` | build, jar verification, artifact, release on `v*` |
 | `.github/workflows/smoke.yml` | boots a real Paper server with the jar and asserts the log |
+| `.github/release-notes.md` | body of the GitHub Release published on a `v*` tag |
 
 ## Continuation prompt (paste into the next agent)
 
