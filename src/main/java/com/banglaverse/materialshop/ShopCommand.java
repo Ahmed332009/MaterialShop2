@@ -115,6 +115,7 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
             case "remove" -> {
                 Shop shop = pl.shops().findByName(name);
                 if (shop == null) { pl.send(s, "admin-not-found"); return true; }
+                if (shop.catalog) { pl.send(s, "catalog-readonly"); return true; }
                 pl.shops().remove(shop);
                 pl.send(s, "admin-removed");
             }
@@ -122,6 +123,7 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
                 if (!(s instanceof Player p)) { pl.send(s, "players-only"); return true; }
                 Shop shop = pl.shops().findByName(name);
                 if (shop == null) { pl.send(s, "admin-not-found"); return true; }
+                if (shop.catalog) { pl.send(s, "catalog-readonly"); return true; }
                 pl.gui().openManage(p, shop, 0);
             }
             case "npc" -> {
@@ -148,6 +150,7 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
             case "reload" -> {
                 pl.reloadConfig();
                 pl.loadMessages();
+                pl.shops().loadCatalog();
                 pl.send(s, "reload");
             }
             case "log" -> {

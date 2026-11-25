@@ -1,6 +1,7 @@
 package com.banglaverse.materialshop;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.Container;
@@ -11,6 +12,7 @@ import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
@@ -140,6 +142,7 @@ public class ShopManager {
         market.clear();
         nextMarketId = 1;
         loadMarket();
+        loadCatalog();
         if (shopsFile.exists()) {
             YamlConfiguration y = YamlConfiguration.loadConfiguration(shopsFile);
             ConfigurationSection root = y.getConfigurationSection("shops");
@@ -189,6 +192,75 @@ public class ShopManager {
                 }
             }
         }
+    }
+
+    // ---------- catalog (pre-listed server shops from catalog.yml) ----------
+
+    /** (Re)builds the catalog shops from catalog.yml. Safe to call on reload. */
+    public void loadCatalog() {
+        for (Shop s : new ArrayList<>(shops.values())) if (s.catalog) shops.remove(s.id);
+        if (!pl.getConfig().getBoolean("catalog.enabled", true)) return;
+        File f = new File(pl.getDataFolder(), "catalog.yml");
+        if (!f.exists()) pl.saveResource("catalog.yml", false);
+        YamlConfiguration y = YamlConfiguration.loadConfiguration(f);
+        ConfigurationSection root = y.getConfigurationSection("shops");
+        if (root == null) return;
+        int sections = 0;
+        int items = 0;
+        for (String key : root.getKeys(false)) {
+            ConfigurationSection c = root.getConfigurationSection(key);
+            if (c == null) continue;
+            Shop s = new Shop(UUID.nameUUIDFromBytes(("materialshop-catalog:" + key).getBytes(StandardCharsets.UTF_8)), null);
+            s.catalog = true;
+            s.name = c.getString("name", key);
+            Material ic = Material.matchMaterial(c.getString("icon", "CHEST"));
+            s.icon = ic == null ? Material.CHEST : ic;
+            for (String line : c.getStringList("items")) {
+                Listing l = parseCatalogLine(s.nextListingId, line);
+                if (l == null) {
+                    pl.getLogger().warning("catalog.yml: skipped bad line in section " + key + ": " + line);
+                    continue;
+                }
+                s.listings.add(l);
+                s.nextListingId++;
+                items++;
+            }
+            shops.put(s.id, s);
+            sections++;
+        }
+        pl.getLogger().info("Catalog loaded: " + sections + " shops, " + items + " items.");
+    }
+
+    private Listing parseCatalogLine(int id, String line) {
+        String[] sides = line.split("=");
+        if (sides.length != 2) return null;
+        ItemStack item = parseStack(sides[0]);
+        if (item == null) return null;
+        List<ItemStack> pays = new ArrayList<>();
+        for (String part : sides[1].split("\\|")) {
+            ItemStack p = parseStack(part);
+            if (p == null) return null;
+            pays.add(p);
+        }
+        if (pays.isEmpty() || pays.size() > 4) return null;
+        return new Listing(id, item, pays);
+    }
+
+    private ItemStack parseStack(String text) {
+        String[] t = text.trim().split("\\s+");
+        if (t.length == 0 || t[0].isEmpty()) return null;
+        Material m = Material.matchMaterial(t[0]);
+        if (m == null || m.isAir() || !m.isItem()) return null;
+        int amt = 1;
+        if (t.length > 1) {
+            try {
+                amt = Integer.parseInt(t[1]);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        if (amt < 1) return null;
+        return new ItemStack(m, Math.min(amt, m.getMaxStackSize()));
     }
 
     // ---------- market (central GUI marketplace, stock held in escrow) ----------
@@ -276,6 +348,7 @@ public class ShopManager {
     public synchronized void save() {
         YamlConfiguration y = new YamlConfiguration();
         for (Shop s : shops.values()) {
+            if (s.catalog) continue; // catalog shops come from catalog.yml
             String p = "shops." + s.id;
             y.set(p + ".owner", s.owner == null ? null : s.owner.toString());
             y.set(p + ".name", s.name);

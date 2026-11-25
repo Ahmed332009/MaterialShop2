@@ -69,7 +69,7 @@ public class Gui {
     }
 
     private boolean canManage(Player p, Shop s) {
-        return pl.shops().exists(s) && ((s.owner != null && s.owner.equals(p.getUniqueId()))
+        return pl.shops().exists(s) && !s.catalog && ((s.owner != null && s.owner.equals(p.getUniqueId()))
                 || p.hasPermission("materialshop.admin"));
     }
 
@@ -193,7 +193,7 @@ public class Gui {
                 int idx = this.page * PAGE + i;
                 if (idx >= list.size()) break;
                 Shop s = list.get(idx);
-                inv.setItem(i, Text.icon(s.isAdmin() ? Material.ENDER_CHEST : Material.BARREL, "&f" + s.name,
+                inv.setItem(i, Text.icon(s.icon != null ? s.icon : (s.isAdmin() ? Material.ENDER_CHEST : Material.BARREL), "&f" + s.name,
                         "&7Owner: &f" + ownerName(s), "&7Listings: &f" + s.listings.size(),
                         kind == Kind.MINE ? "&eClick to manage" : "&aClick to open"));
             }

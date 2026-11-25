@@ -1,52 +1,56 @@
 # Changelog
 
-## 0.2.0 — GUI market (compiles; loads on a real Paper server, trades not yet played)
+## 0.3.0 — pre-listed server shop catalog (compiles; catalog loads on a real Paper server)
 
-The main feature changed from chest shops to a central GUI market with escrow, so 0.2.0 is not a drop-in
-upgrade of 0.1.0: `/shop` now opens the market, and chest shops became an optional extra
-(`chest-shops.enabled`).
-
-### Source as shipped in the 0.2.0 archive
-- Central GUI market opened with `/shop`: no chest or block needed, stock held in escrow by the plugin.
-- Market features: category tabs, sort by newest or item name, pagination, add stock, cancel listing,
-  optional expiry, per-player listing cap.
-- Chest shops are optional now, created with `/shop chest create [name]`.
-- Server shops (admin, infinite stock) kept, with `/shopadmin create|edit|remove|npc|list|reload|log`.
-- Collect box, transaction log, container protection and the fairness warning kept.
+### Source as shipped in the 0.3.0 archive
+- `catalog.yml` ships 6 pre-listed server shops with 168 items already priced: Building Blocks, Farming and
+  Food, Ores and Materials, Tools and Armor, Redstone and Utility, Mob Drops and Rare.
+- One line per item, `"ITEM amount = PAYMENT amount | PAYMENT amount"`, up to 4 payment options per line.
+- The catalog is built on start and rebuilt by `/shopadmin reload`; catalog shops are read-only in menus
+  (`/shopadmin edit` and `remove` answer `catalog-readonly`), are never written to `shops.yml`, and are
+  skipped by the menu-manage permission check. `catalog.enabled: false` turns the whole catalog off.
+- Everything from 0.2.0 is kept: GUI market with escrow, optional chest shops, collect box, transaction log,
+  container protection, fairness warning.
 
 ### Build and toolchain (handoff step 1)
-- Paper API `1.21.11-R0.1-SNAPSHOT` and Java 21, copied from the MaterialClaim build so both plugins run
-  on the same server. `plugin.yml` `api-version` is `'1.21'`, as in MaterialClaim; the workflow already
-  used Java 21.
+- Paper API `1.21.11-R0.1-SNAPSHOT` and Java 21, copied from the MaterialClaim build so both plugins run on
+  the same server. `plugin.yml` `api-version` is `'1.21'`, as in MaterialClaim; the workflow already used
+  Java 21.
 - Maven compiler/resources/jar plugins pinned so `release 21` is honoured; `plugin.yml`
-  `version: ${project.version}` is filtered to `0.2.0` at package time.
-- GitHub Actions `Build`: compile, jar sanity check (plugin.yml inside, classes inside, no unexpanded
-  placeholder), artifact upload, release with the jar attached on a `v*` tag.
-- GitHub Actions `Smoke test`: downloads Paper 1.21.11, installs the jar, boots a flat world, runs console
-  commands and asserts on the log and on the YAML files the plugin writes.
+  `version: ${project.version}` is filtered to `0.3.0` at package time.
+- Actions `Build`: compile, jar sanity check, artifact, release on `v*` tags. Actions `Smoke test`: boots a
+  real Paper 1.21.11 server, runs console commands, and now also asserts the catalog: the log must contain
+  `Catalog loaded: 6 shops, 168 items` and no `catalog.yml: skipped bad line`.
 
-### Fixed while auditing for item loss and duplication (handoff step 3)
-- Add listing: one set of template items could create two listings, because the Confirm button stayed
-  live until the menu closed. `confirmed` now latches in both the market and the shop path.
-- Add listing (market): the escrowed units are only credited once every unit is really taken from the
-  player; if the extra units cannot be removed the listing is refused instead of being created empty-handed.
-- Add stock: the units were credited even when the inventory removal failed (it is checked first, but the
-  result was ignored). The result is now checked.
+### Catalog audit
+- `parseCatalogLine` / `parseStack` were checked against all 168 shipped lines: every line has exactly one
+  `=`, between 1 and 4 payment options, a material name of the form `[A-Z0-9_]+` and integer amounts, so
+  the catalog parses to 6 shops and 168 listings. Amounts above the stack size are clamped.
+- Bad material names or malformed lines are skipped and logged one by one; they never abort the load, and
+  they never create a half-priced listing.
+- Catalog shops are admin shops (`owner == null`), so they have unlimited stock, charge nothing to the
+  server, and cannot be edited or removed through the menus (`canManage` returns false).
+- Rebuilding the catalog on reload replaces the shops under stable UUIDs
+  (`nameUUIDFromBytes("materialshop-catalog:" + key)`), so a GUI opened before the reload says "gone"
+  instead of acting on a stale shop.
+
+### Fixed while auditing for item loss and duplication (handoff step 3, carried over from 0.2.0)
+- Add listing: one set of template items could create two listings, because Confirm stayed live until the
+  menu closed. `confirmed` now latches in both the market and the shop path.
+- Add listing (market): escrow units were credited even if the extra units could not be removed from the
+  player; the removal result is now checked.
+- Add stock: same ignored-result issue, now checked.
 - Add listing: dragging was cancelled by the generic handler, so items could not be dragged into the
-  sell/payment slots (only clicked in). Drags are now allowed when every touched slot is a free slot.
-- Custom quantity: the prompt says "type cancel", but `cancel` produced a parse error. It now cancels
+  sell/payment slots (only clicked in). Drags are allowed when every touched slot is a free slot.
+- Custom quantity: the prompt says "type cancel", but `cancel` produced a parse error; it now cancels
   quietly and reopens the purchase screen.
 - Collect box: only the last leftover stack was put back when the player's inventory was full. Every
   leftover stack is returned now, with the new `collect-no-room` message.
-- Shutdown also saves `market.yml`, so a market mutation made in the last tick before shutdown is not lost.
+- Shutdown also saves `market.yml`.
 
-### Audited and left alone
-- `Trade.execute` is unchanged in shape: market stock is a unit counter, so a market trade decrements units
-  and a chest shop trade must remove the items from the live container; both roll the buyer's inventory
-  back from a snapshot on any failure. Payment is only stored in the seller's box after the goods are out.
-- Listing creation and cancellation move exactly `units * item.getAmount()` items in both directions.
-- `expire` returns units to the seller's collect box and refuses to expire when the box is full, so it
-  retries later instead of voiding the stock.
+## 0.2.0 — GUI market (superseded by 0.3.0)
+- Central GUI market opened with `/shop`, escrow stock, category tabs, sort, pagination, add stock, cancel
+  listing, optional expiry; chest shops became an optional extra.
 
 ## 0.1.0 — chest shops (superseded)
 - First draft with chest shops as the main feature.

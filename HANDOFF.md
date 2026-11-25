@@ -1,94 +1,61 @@
-# MaterialShop handoff (version 0.2.0)
+# MaterialShop handoff (version 0.3.0)
 
 ## State
+Complete source for the GUI market design: Market, My listings, Server shops, optional chest shops, collect
+box, escrow, expiry, transaction log, plus the pre-listed `catalog.yml` server shops (6 shops, 168 items).
 
-The 0.2.0 source (GUI market + escrow, optional chest shops) is complete **and compiles**. The GitHub
-Actions `Build` workflow runs `mvn -B -ntp clean package` against the Paper 1.21.11 API with Java 21 on
-every push, verifies the jar, uploads it and can publish a release; the `Smoke test` workflow boots a real
-Paper 1.21.11 server with the jar and drives a few console commands.
+**Compiles and loads.** The `Build` workflow runs `mvn -B -ntp clean package` against the Paper 1.21.11 API
+with Java 21, verifies the jar, uploads it and publishes a release on `v*` tags. The `Smoke test` workflow
+boots a real Paper 1.21.11 server with the jar, runs console commands and asserts that the catalog loads as
+`6 shops, 168 items` with no skipped lines. No player has used the menus yet.
 
-Toolchain matches MaterialClaim (handoff step 1, done):
+Toolchain matches MaterialClaim: Java 21, `paper-api 1.21.11-R0.1-SNAPSHOT`, `api-version: '1.21'`, CI Java 21.
 
-| Thing | MaterialClaim | MaterialShop |
-|---|---|---|
-| Java | 21 (toolchain) | 21 (`java.version`, `release`) |
-| Paper API | `1.21.11-R0.1-SNAPSHOT` | `1.21.11-R0.1-SNAPSHOT` (`paper.version`) |
-| plugin.yml api-version | `'1.21'` | `'1.21'` |
-| CI Java | 21 | 21 |
+## Done this session
 
-No player has used this build on a server yet - see "Not done / untested".
-
-## What changed this session
-
-1. Imported the 0.2.0 archive unchanged, then applied handoff step 1: Paper 1.21.11 + Java 21, pinned
-   compiler/resources/jar plugins so `release 21` and resources filtering are explicit.
-2. Kept the CI pipeline: build, jar verification, artifact, release on `v*` tags, plus the real-server
-   smoke test.
+1. Copied the Java and Paper API versions from MaterialClaim into `pom.xml` (1.21.11 / 21); `plugin.yml` and
+   the workflow already matched.
+2. Built and verified the jar in Actions (first run green), kept the release-on-tag step, and extended the
+   real-server smoke test to cover the catalog.
 3. Re-read `Trade.java`, `Gui.java` (`SetupMenu`, `ListingManageMenu`, `CollectMenu`) and `ShopManager.java`
-   (`market`, `expire`) for item loss and duplication, and fixed what it turned up. Details in
-   `CHANGELOG.md`; the short version:
-   - a second click on Confirm could create two listings from one set of template items;
-   - market escrow units could be credited without the items actually leaving the player's inventory;
-   - the same ignored-result issue in "add stock";
-   - drags could not reach the add-listing slots;
-   - `cancel` was documented but rejected in the quantity prompt;
-   - the collect box could swallow leftover stacks when the inventory was full;
-   - `market.yml` was not saved again on shutdown.
-4. The trade engine itself needed no change: market stock is a unit counter, chest shops still take items
-   out of the live container, and every failure path restores the buyer's inventory snapshot.
+   (market storage, `expire`, `loadCatalog`) and fixed what it turned up - see `CHANGELOG.md`. The catalogue
+   files: every one of the 168 lines parses, catalog shops are read-only and never saved to `shops.yml`.
 
-## Not done / untested
-
-- No player-driven test: the market menus, buying, escrow, add stock, cancel, expiry, the collect box,
-  Geyser/Bedrock taps, permissions and protection listeners are **unverified in game**. Only the console
-  path is covered by the smoke test.
-- No automated unit tests. The README checklist is the acceptance test.
-- No price editing (cancel and relist), no item-name search, no MaterialClaim or WorldGuard API hook.
-- Expiry only runs every 5 minutes and silently skips listings when the seller's collect box is full.
-- Market listings have no "last seen" notification for offline sellers beyond the collect box.
-
-## Exact next steps, in order
-
-1. Download `MaterialShop-0.2.0.jar` from the release or the `MaterialShop-jar` artifact and put it in
+## Next steps, in order
+1. Download `MaterialShop-0.3.0.jar` from the release or the `MaterialShop-jar` artifact and put it in
    `plugins/` on a Paper 1.21.11 (26.3) server with Java 21.
-2. Create a server shop with `/shopadmin create test`, add a listing, then work through the README manual
-   test checklist: market listing with `units > 1`, buy it, add stock, cancel a listing, expiry, collect
-   box full, chest shop protection, chest shops disabled.
+2. Open `/shop`, browse Server shops, buy one catalog item, then work through the README checklist: market
+   listing with more than one unit, add stock, cancel, expiry, collect box full, chest shop protection,
+   chest shops disabled, `/shopadmin reload` after editing `catalog.yml`.
 3. Fix what breaks in the file listed below, commit to this branch, let Actions rebuild, and add a line to
    `CHANGELOG.md` for every fix. Keep the build green.
-4. When the checklist is green, take screenshots, bump `pom.xml`, push a `v*` tag and the workflow
-   publishes the release with the jar.
+4. When the checklist is green, take screenshots, bump `pom.xml`, push a `v*` tag and the workflow publishes
+   the release with the jar.
 
-## Which file does what
+## Files
+- Trade.java: trade engine for market and shop listings.
+- Gui.java: all menus (MainMenu, MarketMenu, MyListingsMenu, ListingManageMenu, SetupMenu, PurchaseMenu, ShopMenu, ManageMenu, ListMenu, CollectMenu).
+- ShopManager.java: storage for shops.yml, market.yml, collect.yml.
+- src/main/resources/catalog.yml: pre-listed server shops (6 shops, 168 items). Parsed by
+  ShopManager.loadCatalog()/parseCatalogLine()/parseStack(); malformed lines are skipped and logged.
+- Category.java: market tab mapping.
+- ProtectionListener.java, GuiListener.java, ShopCommand.java, MaterialShop.java, Text.java, Listing.java, Shop.java.
 
-| File | Responsibility |
-|---|---|
-| `MaterialShop.java` | plugin bootstrap, config/messages, chat prompt map, transaction log writer, expiry timer |
-| `ShopManager.java` | shops, chest shop index, collect boxes, market listings and their three YAML files |
-| `Shop.java`, `Listing.java` | data model; a listing owns clones of the item and the payment options, plus market seller/units/created |
-| `Category.java` | market tab mapping (config override, named items, name heuristic) |
-| `Trade.java` | counting, room checks, the atomic trade and its rollback, for market and shop listings |
-| `Gui.java` | every chest menu: main, market, my listings, listing manage, add listing, purchase, shop, manage, list, collect |
-| `GuiListener.java` | click/drag/close/chat routing for those menus |
-| `ProtectionListener.java` | chest shop protection, explosions, hoppers, adjacent chests, shop villagers |
-| `ShopCommand.java` | `/shop` and `/shopadmin` plus tab completion |
-| `Text.java` | colour codes, item names, icon helper |
-| `src/main/resources/config.yml` | limits, market caps and expiry, blacklist/whitelist, value table, category overrides |
-| `src/main/resources/messages.yml` | every player-facing string; add a key here for any new message |
-| `.github/workflows/build.yml` | build, jar verification, artifact, release on `v*` |
-| `.github/workflows/smoke.yml` | boots a real Paper server with the jar and asserts the log |
-| `.github/release-notes.md` | body of the GitHub Release published on a `v*` tag |
+## Not done / untested
+- No player-driven test: menus, buying, escrow arithmetic, add stock, cancel, expiry, the collect box,
+  Geyser/Bedrock taps, permissions and chest shop protection are unverified in game.
+- No automated unit tests; the README checklist is the acceptance test.
+- No price editing in the menu (cancel and relist; catalog prices live in `catalog.yml`), no item-name
+  search, no MaterialClaim or WorldGuard API hook, no catalog buy-back.
 
-## Continuation prompt (paste into the next agent)
-
-You are continuing the Minecraft Paper plugin MaterialShop (GUI barter market, no money), branch
-`arena/7eff1135-materialshop2` in the `Ahmed332009/MaterialShop2` repo. Read `HANDOFF.md`, `README.md` and
-`CHANGELOG.md` first. The 0.2.0 source compiles against Paper 1.21.11 / Java 21, the `Build` workflow is
-green and a smoke test boots a real Paper server where the plugin loads, registers its commands and
-persists data. Nothing has been clicked by a player yet. Do this: (1) run the README checklist on a real
-server, starting with a market listing that has more than one unit, buying it, adding stock and cancelling;
-(2) fix what breaks, keeping the escrow arithmetic exact (`units * item.getAmount()` in and out);
-(3) re-check `Trade.execute`, `Gui.SetupMenu`, `Gui.ListingManageMenu` and `ShopManager.expire` for item
-loss or duplication after each fix; (4) keep the Actions build green and update `CHANGELOG.md` and
-`HANDOFF.md`; (5) report build status, jar path and what is still untested. Do not switch branches, do not
-add Vault or an economy plugin, and do not touch the separate `Ahmed332009/MaterialShop` repo.
+## Continuation prompt
+You are continuing the Minecraft Paper plugin MaterialShop (GUI barter market + pre-listed server shop
+catalog, no money), branch `arena/7eff1135-materialshop2` in the `Ahmed332009/MaterialShop2` repo. Read
+`HANDOFF.md`, `README.md` and `CHANGELOG.md` first. The 0.3.0 source compiles against Paper 1.21.11 / Java
+21, `Build` is green, and `Smoke test` boots a real Paper server that loads the catalog (6 shops, 168 items)
+without skipped lines. Nothing has been clicked by a player yet. Do this: (1) run the README checklist on a
+real server, starting with a catalog purchase and a multi-unit market listing; (2) fix what breaks, keeping
+the escrow arithmetic exact and the catalog read-only; (3) re-check `Trade.execute`, `Gui.SetupMenu`,
+`Gui.ListingManageMenu` and `ShopManager.expire` after each fix; (4) keep the Actions build green and update
+`CHANGELOG.md` and `HANDOFF.md`; (5) report build status, jar path and what is still untested. Do not switch
+branches, do not add Vault or an economy plugin, and do not touch the separate `Ahmed332009/MaterialShop` repo.

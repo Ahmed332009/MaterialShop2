@@ -50,3 +50,6 @@ chest-shops:
 # Tabs: BLOCKS, TOOLS, ARMOR, FOOD, REDSTONE, FARMING, ORES, MISC. Named custom items go to MISC.
 categories:
   MISC: []
+
+catalog:
+  enabled: true                # pre-listed server shops from catalog.yml

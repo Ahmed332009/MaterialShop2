@@ -116,6 +116,12 @@ jobs:
           cd server
           fail() { echo "::error::$1"; grep -n 'MaterialShop\|Exception\|ERROR' out.log | head -40; exit 1; }
           grep -q 'MaterialShop enabled' out.log || fail 'plugin did not enable'
+          grep -q 'Catalog loaded: 6 shops, 168 items' out.log || fail 'catalog.yml did not load as expected'
+          if grep -q 'catalog.yml: skipped bad line' out.log; then
+            echo '::error::catalog.yml contains lines the server rejected'
+            grep 'catalog.yml: skipped bad line' out.log
+            exit 1
+          fi
           if grep -qi 'Could not load .*MaterialShop\|Unsupported api-version\|Unknown command' out.log; then
             fail 'plugin.yml / command registration problem'
           fi
@@ -135,6 +141,6 @@ jobs:
 
           # Annotations are readable through the API, which makes this evidence easy to review
           # without downloading a multi-megabyte log.
-          SUMMARY=$(grep -E 'Starting Paper|Loading server plugin MaterialShop|MaterialShop enabled|Only players can use this|Admin shop smoketest created|Done \(' out.log \
+          SUMMARY=$(grep -E 'Starting Paper|Loading server plugin MaterialShop|MaterialShop enabled|Catalog loaded|Only players can use this|Admin shop smoketest created|Done \(' out.log \
             | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-160 | tr '\n' '|')
           echo "::notice title=Paper smoke test::${SUMMARY}" 
