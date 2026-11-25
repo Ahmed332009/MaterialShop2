@@ -1,0 +1,146 @@
+name: Smoke test (real Paper server)
+
+# Boots a real Paper server with the plugin installed, runs a few console commands and
+# checks the output. This catches plugin.yml mistakes, missing message keys that are
+# read on enable, and command registration errors that a plain compile cannot see.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - '.github/workflows/smoke.yml'
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Build the plugin
+        run: mvn -B -ntp clean package
+
+      - name: Download Paper 1.21.11
+        run: |
+          set -uo pipefail
+          VERSION=1.21.11
+          URL_FILE=""
+
+          # New API (fill v3) first, legacy v2 second.
+          V3="https://fill.papermc.io/v3/projects/paper/versions/$VERSION/builds"
+          C3=$(curl -s -o v3.json -w '%{http_code}' -H 'User-Agent: MaterialShop-CI/1.0' "$V3")
+          echo "v3 http=$C3"
+          if [ "$C3" = "200" ]; then
+            URL_FILE=$(jq -r 'if type=="array" then (.[0].downloads["server:default"].url // empty) else (.downloads["server:default"].url // empty) end' v3.json)
+          fi
+
+          if [ -z "$URL_FILE" ]; then
+            V2="https://api.papermc.io/v2/projects/paper/versions/$VERSION/builds"
+            C2=$(curl -s -o v2.json -w '%{http_code}' "$V2")
+            echo "v2 http=$C2"
+            if [ "$C2" = "200" ]; then
+              BUILD=$(jq -r '[.builds[].build] | max' v2.json)
+              URL_FILE="https://api.papermc.io/v2/projects/paper/versions/$VERSION/builds/$BUILD/downloads/paper-$VERSION-$BUILD.jar"
+            fi
+          fi
+
+          if [ -z "$URL_FILE" ]; then
+            echo "::error::could not resolve a Paper $VERSION download (v3 http=$C3, v2 http=${C2:-n/a})"
+            echo "--- v3 body ---"; head -c 500 v3.json; echo
+            echo "--- v2 body ---"; head -c 500 v2.json 2>/dev/null; echo
+            exit 1
+          fi
+
+          echo "Downloading $URL_FILE"
+          CODE=$(curl -sSL -o paper.jar -w '%{http_code}' "$URL_FILE")
+          echo "jar http=$CODE size=$(stat -c%s paper.jar)"
+          if [ "$CODE" != "200" ] || [ "$(stat -c%s paper.jar)" -lt 1000000 ]; then
+            echo "::error::paper jar download failed: http=$CODE from $URL_FILE"
+            exit 1
+          fi
+
+      - name: Run the server with the plugin
+        run: |
+          set -uo pipefail
+          mkdir -p server/plugins
+          cp target/MaterialShop-*.jar server/plugins/
+          cd server
+          echo "eula=true" > eula.txt
+          cat > server.properties <<'EOF'
+          online-mode=false
+          level-type=minecraft\:flat
+          spawn-protection=0
+          max-players=5
+          view-distance=4
+          sync-chunk-writes=false
+          EOF
+          mkfifo console
+          ( java -Xms1G -Xmx2G -jar ../paper.jar --nogui < console > out.log 2>&1 ; \
+            echo "$?" > exit.code ) &
+          SERVER_PID=$!
+          exec 3> console
+
+          # wait for the server to finish loading (3 minutes max)
+          for i in $(seq 1 90); do
+            grep -q 'Done (' out.log 2>/dev/null && break
+            sleep 2
+          done
+          grep -q 'Done (' out.log || { echo '::error::server never finished starting'; tail -60 out.log; exit 1; }
+
+          send() { echo "$1" >&3; sleep 2; }
+          send "shopadmin create smoketest"
+          send "shopadmin list"
+          send "shop market"
+          send "shop list"
+          send "shop chest create"
+          send "shop"
+          send "plugins"
+          send "stop"
+
+          wait $SERVER_PID || true
+
+          echo '===== server log (tail) ====='
+          tail -n 80 out.log
+
+      - name: Check the plugin loaded and worked
+        run: |
+          set -e
+          cd server
+          fail() { echo "::error::$1"; grep -n 'MaterialShop\|Exception\|ERROR' out.log | head -40; exit 1; }
+          grep -q 'MaterialShop enabled' out.log || fail 'plugin did not enable'
+          grep -q 'Catalog loaded: 6 shops, 168 items' out.log || fail 'catalog.yml did not load as expected'
+          if grep -q 'catalog.yml: skipped bad line' out.log; then
+            echo '::error::catalog.yml contains lines the server rejected'
+            grep 'catalog.yml: skipped bad line' out.log
+            exit 1
+          fi
+          if grep -qi 'Could not load .*MaterialShop\|Unsupported api-version\|Unknown command' out.log; then
+            fail 'plugin.yml / command registration problem'
+          fi
+          if grep -qi 'Exception' out.log; then
+            fail 'an exception was thrown'
+          fi
+          grep -q 'Only players can use this' out.log || fail '/shop did not answer a console sender'
+          # /shop, /shop market, /shop list and /shop chest create must each answer the console
+          PLAYER_ONLY=$(grep -c 'Only players can use this' out.log)
+          echo "console answers: $PLAYER_ONLY"
+          [ "$PLAYER_ONLY" -ge 4 ] || fail 'not every /shop subcommand answered the console'
+          grep -q 'MaterialShop' out.log || fail 'no MaterialShop output'
+          echo '--- shops.yml written at shutdown ---'
+          cat plugins/MaterialShop/shops.yml
+          grep -q 'name: smoketest' plugins/MaterialShop/shops.yml || fail 'admin shop was not persisted'
+          echo 'Smoke test OK'
+
+          # Annotations are readable through the API, which makes this evidence easy to review
+          # without downloading a multi-megabyte log.
+          SUMMARY=$(grep -E 'Starting Paper|Loading server plugin MaterialShop|MaterialShop enabled|Catalog loaded|Only players can use this|Admin shop smoketest created|Done \(' out.log \
+            | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-160 | tr '\n' '|')
+          echo "::notice title=Paper smoke test::${SUMMARY}" 
