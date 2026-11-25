@@ -37,8 +37,9 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
         if (!p.hasPermission("materialshop.use")) { pl.send(p, "no-permission"); return true; }
         String sub = a.length == 0 ? "menu" : a[0].toLowerCase(Locale.ROOT);
         switch (sub) {
-            case "create" -> create(p, a);
-            case "list" -> pl.gui().openList(p, Gui.Kind.MINE, 0);
+            case "chest" -> chest(p, a);
+            case "market" -> pl.gui().openMarket(p, Category.ALL, 0, 0);
+            case "list" -> pl.gui().openMyListings(p, 0);
             case "collect" -> {
                 if (p.hasPermission("materialshop.collect")) pl.gui().openCollect(p);
                 else pl.send(p, "no-permission");
@@ -49,6 +50,12 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
             default -> pl.gui().openMain(p);
         }
         return true;
+    }
+
+    private void chest(Player p, String[] a) {
+        if (!pl.chestShopsEnabled()) { pl.send(p, "chest-disabled"); return; }
+        if (a.length >= 2 && a[1].equalsIgnoreCase("create")) create(p, a);
+        else p.sendMessage(Text.c("&e/shop chest create [name] &7turn the chest or barrel you look at into a shop"));
     }
 
     private void create(Player p, String[] a) {
@@ -83,7 +90,7 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
             Bukkit.getPluginManager().callEvent(test);
             if (test.isCancelled()) { pl.send(p, "claim-denied"); return; }
         }
-        String name = a.length > 1 ? String.join(" ", Arrays.copyOfRange(a, 1, a.length)) : p.getName() + "'s shop";
+        String name = a.length > 2 ? String.join(" ", Arrays.copyOfRange(a, 2, a.length)) : p.getName() + "'s shop";
         if (name.length() > 24) name = name.substring(0, 24);
         Shop shop = pl.shops().createPlayer(p.getUniqueId(), name, blocks);
         pl.send(p, "shop-created", "name", name);
@@ -177,9 +184,11 @@ public class ShopCommand implements CommandExecutor, TabCompleter {
             return out;
         }
         if (a.length == 1) {
-            for (String x : List.of("create", "list", "collect", "help")) {
+            for (String x : List.of("market", "chest", "list", "collect", "help")) {
                 if (x.startsWith(a[0].toLowerCase(Locale.ROOT))) out.add(x);
             }
+        } else if (a.length == 2 && a[0].equalsIgnoreCase("chest") && "create".startsWith(a[1].toLowerCase(Locale.ROOT))) {
+            out.add("create");
         }
         return out;
     }

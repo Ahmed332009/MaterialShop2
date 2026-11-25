@@ -4,13 +4,13 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.banglaverse</groupId>
   <artifactId>MaterialShop</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <packaging>jar</packaging>
   <name>MaterialShop</name>
 
   <properties>
     <!-- Copied from the MaterialClaim repo so both plugins target the same runtime:
-         Java 21 and the Paper 1.21.11 API (MaterialClaim build.gradle.kts: paper-api 1.21.11-R0.1-SNAPSHOT). -->
+         Java 21 and the Paper 1.21.11 API (MaterialClaim build.gradle.kts). -->
     <java.version>21</java.version>
     <paper.version>1.21.11-R0.1-SNAPSHOT</paper.version>
     <maven.compiler.release>${java.version}</maven.compiler.release>

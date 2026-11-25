@@ -1,5 +1,5 @@
 # MaterialShop configuration
-default-shop-limit: 5          # player shops per player; permission materialshop.limit.<n> raises it
+default-shop-limit: 5          # chest shops per player; permission materialshop.limit.<n> raises it
 max-listings: 100              # listings per shop
 max-quantity: 2304             # max units in one purchase
 collect-capacity: 45           # stacks in each collect box (max 45)
@@ -38,3 +38,15 @@ values:
   NETHERITE_INGOT: 128
 
 log-max-bytes: 2000000         # transactions.log is rotated above this size
+
+market:
+  max-listings-per-player: 20
+  expiry-hours: 0              # 0 = listings never expire; otherwise stock returns to the seller's collect box
+
+chest-shops:
+  enabled: true                # false hides every chest shop button and command
+
+# Optional category overrides for the market tabs. Materials listed here are forced into that tab.
+# Tabs: BLOCKS, TOOLS, ARMOR, FOOD, REDSTONE, FARMING, ORES, MISC. Named custom items go to MISC.
+categories:
+  MISC: []

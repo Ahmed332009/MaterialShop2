@@ -44,6 +44,10 @@ public class MaterialShop extends JavaPlugin {
         getCommand("shop").setTabCompleter(cmd);
         getCommand("shopadmin").setExecutor(cmd);
         getCommand("shopadmin").setTabCompleter(cmd);
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            long hours = getConfig().getLong("market.expiry-hours", 0);
+            if (hours > 0) shops.expire(hours);
+        }, 200L, 6000L);
         getLogger().info("MaterialShop enabled: " + shops.all().size() + " shops loaded.");
     }
 
@@ -56,6 +60,7 @@ public class MaterialShop extends JavaPlugin {
         if (shops != null) {
             shops.save();
             shops.saveBoxes();
+            shops.saveMarket();
         }
     }
 
@@ -100,6 +105,10 @@ public class MaterialShop extends JavaPlugin {
         int best = getConfig().getInt("default-shop-limit", 5);
         for (int i = 1; i <= 100; i++) if (p.hasPermission("materialshop.limit." + i)) best = Math.max(best, i);
         return best;
+    }
+
+    public boolean chestShopsEnabled() {
+        return getConfig().getBoolean("chest-shops.enabled", true);
     }
 
     public int boxCapacity() {

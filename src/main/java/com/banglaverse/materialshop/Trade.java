@@ -8,6 +8,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /** Trade logic. Everything runs on the main thread, so a trade is validated and applied in one step. */
 public final class Trade {
@@ -71,30 +72,44 @@ public final class Trade {
         ItemStack pay = l.payments.get(payIdx);
         int byPay = count(buyer.getInventory(), pay) / Math.max(1, pay.getAmount());
         int byStock = cap;
-        if (!shop.isAdmin()) {
+        if (shop == null) {
+            byStock = l.units;
+        } else if (!shop.isAdmin()) {
             Inventory stock = pl.shops().stockInv(shop);
             byStock = stock == null ? 0 : count(stock, l.item) / Math.max(1, l.item.getAmount());
         }
         return Math.max(0, Math.min(cap, Math.min(byPay, byStock)));
     }
 
-    /** Returns null on success, otherwise a message key suffix (used as "err-" + result). */
+    /**
+     * Runs one trade. shop == null means a market listing (stock in escrow).
+     * Returns null on success, otherwise a message key suffix (used as "err-" + result).
+     */
     public static String execute(MaterialShop pl, Player buyer, Shop shop, Listing l, int payIdx, int qty) {
-        if (!pl.shops().exists(shop) || shop.find(l.id) != l || payIdx < 0 || payIdx >= l.payments.size()) return "gone";
+        boolean market = shop == null;
+        if (market) {
+            if (pl.shops().marketGet(l.id) != l) return "gone";
+        } else if (!pl.shops().exists(shop) || shop.find(l.id) != l) {
+            return "gone";
+        }
+        if (payIdx < 0 || payIdx >= l.payments.size()) return "gone";
         if (qty < 1 || qty > pl.getConfig().getInt("max-quantity", 2304)) return "bad-qty";
-        if (!shop.isAdmin() && shop.owner.equals(buyer.getUniqueId())) return "own-shop";
+        UUID seller = market ? l.seller : (shop.isAdmin() ? null : shop.owner);
+        if (seller != null && seller.equals(buyer.getUniqueId())) return "own-shop";
 
         ItemStack pay = l.payments.get(payIdx);
         int payTotal = pay.getAmount() * qty;
         int itemTotal = l.item.getAmount() * qty;
 
         Inventory stock = null;
-        if (!shop.isAdmin()) {
+        if (market) {
+            if (l.units < qty) return "no-stock";
+        } else if (!shop.isAdmin()) {
             stock = pl.shops().stockInv(shop);
             if (stock == null) return "broken";
             if (count(stock, l.item) < itemTotal) return "no-stock";
-            if (!pl.shops().canStore(shop.owner, pay, payTotal)) return "box-full";
         }
+        if (seller != null && !pl.shops().canStore(seller, pay, payTotal)) return "box-full";
 
         Inventory bi = buyer.getInventory();
         if (count(bi, pay) < payTotal) return "no-payment";
@@ -114,25 +129,29 @@ public final class Trade {
             bi.setStorageContents(snap);
             return "no-stock";
         }
-        if (!shop.isAdmin()) {
-            pl.shops().store(shop.owner, pay, payTotal);
+        if (market) {
+            l.units -= qty;
+            if (l.units <= 0) pl.shops().removeMarket(l);
+            else pl.shops().saveMarket();
+        }
+        if (seller != null) {
+            pl.shops().store(seller, pay, payTotal);
             pl.shops().saveBoxes();
         }
 
         String itemName = Text.itemName(l.item);
         String payName = Text.itemName(pay);
+        String where = market ? "market listing=" + l.id : "shop=" + shop.id + " \"" + shop.name + "\"";
         pl.log(buyer.getName() + " (" + buyer.getUniqueId() + ") bought " + itemTotal + "x " + itemName
-                + " for " + payTotal + "x " + payName + " from "
-                + (shop.isAdmin() ? "ADMIN" : shop.owner.toString()) + " shop=" + shop.id + " \"" + shop.name + "\" at "
-                + buyer.getWorld().getName() + " " + buyer.getLocation().getBlockX() + " "
-                + buyer.getLocation().getBlockY() + " " + buyer.getLocation().getBlockZ());
+                + " for " + payTotal + "x " + payName + " from " + (seller == null ? "ADMIN" : seller.toString())
+                + " " + where);
         pl.send(buyer, "trade-success", "qty", String.valueOf(itemTotal), "item", itemName,
                 "pay", payTotal + "x " + payName);
-        if (!shop.isAdmin()) {
-            Player o = Bukkit.getPlayer(shop.owner);
+        if (seller != null) {
+            Player o = Bukkit.getPlayer(seller);
             if (o != null) {
                 pl.send(o, "trade-sold", "buyer", buyer.getName(), "qty", String.valueOf(itemTotal),
-                        "item", itemName, "shop", shop.name);
+                        "item", itemName, "shop", market ? "Market" : shop.name);
             }
         }
         return null;

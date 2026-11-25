@@ -22,12 +22,16 @@ public class ShopManager {
     private final Map<UUID, List<ItemStack>> boxes = new HashMap<>();
     private final File shopsFile;
     private final File boxFile;
+    private final File marketFile;
+    private final Map<Integer, Listing> market = new LinkedHashMap<>();
+    private int nextMarketId = 1;
 
     public ShopManager(MaterialShop pl) {
         this.pl = pl;
         pl.getDataFolder().mkdirs();
         this.shopsFile = new File(pl.getDataFolder(), "shops.yml");
         this.boxFile = new File(pl.getDataFolder(), "collect.yml");
+        this.marketFile = new File(pl.getDataFolder(), "market.yml");
     }
 
     public static String key(Block b) {
@@ -133,6 +137,9 @@ public class ShopManager {
         shops.clear();
         index.clear();
         boxes.clear();
+        market.clear();
+        nextMarketId = 1;
+        loadMarket();
         if (shopsFile.exists()) {
             YamlConfiguration y = YamlConfiguration.loadConfiguration(shopsFile);
             ConfigurationSection root = y.getConfigurationSection("shops");
@@ -182,6 +189,88 @@ public class ShopManager {
                 }
             }
         }
+    }
+
+    // ---------- market (central GUI marketplace, stock held in escrow) ----------
+
+    public Collection<Listing> market() { return market.values(); }
+    public Listing marketGet(int id) { return market.get(id); }
+
+    public List<Listing> marketOf(UUID u) {
+        List<Listing> out = new ArrayList<>();
+        for (Listing l : market.values()) if (u.equals(l.seller)) out.add(l);
+        return out;
+    }
+
+    public int countMarket(UUID u) { return marketOf(u).size(); }
+
+    public Listing addMarket(UUID seller, ItemStack item, List<ItemStack> pays, int units) {
+        Listing l = new Listing(nextMarketId++, item, pays, seller, units, System.currentTimeMillis());
+        market.put(l.id, l);
+        saveMarket();
+        return l;
+    }
+
+    public void removeMarket(Listing l) {
+        market.remove(l.id);
+        saveMarket();
+    }
+
+    /** Moves expired listings (stock) into the seller's collect box. Returns how many were expired. */
+    public int expire(long hours) {
+        long limit = System.currentTimeMillis() - hours * 3_600_000L;
+        int n = 0;
+        for (Listing l : new ArrayList<>(market.values())) {
+            if (l.created >= limit) continue;
+            int total = l.units * l.item.getAmount();
+            if (!canStore(l.seller, l.item, total)) continue; // retry on the next check
+            store(l.seller, l.item, total);
+            market.remove(l.id);
+            n++;
+        }
+        if (n > 0) {
+            saveMarket();
+            saveBoxes();
+        }
+        return n;
+    }
+
+    private void loadMarket() {
+        if (!marketFile.exists()) return;
+        YamlConfiguration y = YamlConfiguration.loadConfiguration(marketFile);
+        nextMarketId = y.getInt("next-id", 1);
+        ConfigurationSection ls = y.getConfigurationSection("listings");
+        if (ls == null) return;
+        for (String k : ls.getKeys(false)) {
+            ConfigurationSection lc = ls.getConfigurationSection(k);
+            if (lc == null) continue;
+            try {
+                ItemStack item = lc.getItemStack("item");
+                List<ItemStack> pays = new ArrayList<>();
+                for (Object o : lc.getList("payments", new ArrayList<>())) if (o instanceof ItemStack is) pays.add(is);
+                if (item == null || pays.isEmpty()) continue;
+                Listing l = new Listing(Integer.parseInt(k), item, pays, UUID.fromString(lc.getString("seller", "")),
+                        lc.getInt("units"), lc.getLong("created"));
+                market.put(l.id, l);
+                nextMarketId = Math.max(nextMarketId, l.id + 1);
+            } catch (Exception ex) {
+                pl.getLogger().warning("Skipping bad market listing " + k + ": " + ex);
+            }
+        }
+    }
+
+    public synchronized void saveMarket() {
+        YamlConfiguration y = new YamlConfiguration();
+        y.set("next-id", nextMarketId);
+        for (Listing l : market.values()) {
+            String p = "listings." + l.id;
+            y.set(p + ".seller", l.seller.toString());
+            y.set(p + ".units", l.units);
+            y.set(p + ".created", l.created);
+            y.set(p + ".item", l.item);
+            y.set(p + ".payments", l.payments);
+        }
+        writeAtomic(y, marketFile);
     }
 
     public synchronized void save() {

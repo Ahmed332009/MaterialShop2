@@ -1,49 +1,52 @@
 # Changelog
 
-## 0.1.0 — first build that actually compiles (loaded on a real Paper server, trades untested)
+## 0.2.0 — GUI market (compiles; loads on a real Paper server, trades not yet played)
 
-Build and toolchain (handoff step 1)
-- Targets the Paper 1.21.11 API (`1.21.11-R0.1-SNAPSHOT`) with Java 21, copied from the MaterialClaim
-  build so both plugins run on the same server. `plugin.yml` `api-version` is `1.21`, as in MaterialClaim.
-- Maven compiler/resources/jar plugins pinned so `release 21` is actually honoured; `plugin.yml`
-  `version: ${project.version}` is filtered to `0.1.0` at package time.
-- GitHub Actions: Java 21 workflow, first green run on branch `arena/7eff1135-materialshop2`, jar plus
-  artifact upload, a jar sanity check (plugin.yml present, classes present, no unexpanded placeholder)
-  and a release step for `v*` tags.
+The main feature changed from chest shops to a central GUI market with escrow, so 0.2.0 is not a drop-in
+upgrade of 0.1.0: `/shop` now opens the market, and chest shops became an optional extra
+(`chest-shops.enabled`).
 
-Automated smoke test on a real Paper 1.21.11 server (new `.github/workflows/smoke.yml`)
-- The workflow downloads the Paper server, installs the built jar, boots it on a flat world, waits for
-  `Done (`, then sends `shopadmin create smoketest`, `shopadmin list`, `shop list`, `shop`, `plugins`
-  and `stop` through the console before checking the log and `plugins/MaterialShop/shops.yml`.
-- Result: `Loading server plugin MaterialShop v0.1.0`, `MaterialShop enabled: 0 shops loaded.`,
-  `Done (27.747s)`, `Admin shop smoketest created.`, `/shop` from console answers
-  "Only players can use this.", no `Exception`, no `Unknown command`, `shops.yml` written at shutdown
-  with `name: smoketest`. So plugin.yml, api-version, command registration, config/messages loading and
-  YAML persistence are all exercised. Menus, trades, Geyser taps and player permissions are still only
-  covered by the manual checklist.
+### Source as shipped in the 0.2.0 archive
+- Central GUI market opened with `/shop`: no chest or block needed, stock held in escrow by the plugin.
+- Market features: category tabs, sort by newest or item name, pagination, add stock, cancel listing,
+  optional expiry, per-player listing cap.
+- Chest shops are optional now, created with `/shop chest create [name]`.
+- Server shops (admin, infinite stock) kept, with `/shopadmin create|edit|remove|npc|list|reload|log`.
+- Collect box, transaction log, container protection and the fairness warning kept.
 
-Fixed while re-reading `Trade.java` and `Gui.java` (handoff step 3)
-- Add-listing menu: the click guard was not the only hole. Dragging was cancelled for *every* menu, so
-  items could not be dragged into the sell/payment slots. Drags are now allowed when every touched slot
-  is one of those free slots and still blocked everywhere else.
-- Add-listing menu: a second click on "Confirm listing" before the menu closed created a second listing
-  from the same template items. `confirmed` now latches and the extra listing cannot be created.
-- Add-listing menu: the four template slots are given back on close (unchanged) and dropped at the
-  player's feet only when their inventory is full, so nothing is destroyed.
-- Custom quantity prompt: the prompt text says "type cancel", but `cancel` produced a parse error.
-  It now cancels quietly and reopens the purchase screen.
-- Collect box: only the last leftover stack was put back when the player's inventory was full; every
-  leftover stack is now returned and the player is told the rest stays in the box (`collect-no-room`).
+### Build and toolchain (handoff step 1)
+- Paper API `1.21.11-R0.1-SNAPSHOT` and Java 21, copied from the MaterialClaim build so both plugins run
+  on the same server. `plugin.yml` `api-version` is `'1.21'`, as in MaterialClaim; the workflow already
+  used Java 21.
+- Maven compiler/resources/jar plugins pinned so `release 21` is honoured; `plugin.yml`
+  `version: ${project.version}` is filtered to `0.2.0` at package time.
+- GitHub Actions `Build`: compile, jar sanity check (plugin.yml inside, classes inside, no unexpanded
+  placeholder), artifact upload, release with the jar attached on a `v*` tag.
+- GitHub Actions `Smoke test`: downloads Paper 1.21.11, installs the jar, boots a flat world, runs console
+  commands and asserts on the log and on the YAML files the plugin writes.
 
-Checked and left alone (`Trade.execute` is atomic, main thread only)
-- Payment is counted and removed from a clone snapshot, goods are added, stock is removed from the live
-  container, and any failure restores the snapshot before returning an error key. No path returns
-  success without stock leaving the container, and no path removes payment without giving goods.
-- Buying from your own shop, buying with a stale listing object, a removed shop, a missing container and
-  a full collect box all fail before anything moves.
+### Fixed while auditing for item loss and duplication (handoff step 3)
+- Add listing: one set of template items could create two listings, because the Confirm button stayed
+  live until the menu closed. `confirmed` now latches in both the market and the shop path.
+- Add listing (market): the escrowed units are only credited once every unit is really taken from the
+  player; if the extra units cannot be removed the listing is refused instead of being created empty-handed.
+- Add stock: the units were credited even when the inventory removal failed (it is checked first, but the
+  result was ignored). The result is now checked.
+- Add listing: dragging was cancelled by the generic handler, so items could not be dragged into the
+  sell/payment slots (only clicked in). Drags are now allowed when every touched slot is a free slot.
+- Custom quantity: the prompt says "type cancel", but `cancel` produced a parse error. It now cancels
+  quietly and reopens the purchase screen.
+- Collect box: only the last leftover stack was put back when the player's inventory was full. Every
+  leftover stack is returned now, with the new `collect-no-room` message.
+- Shutdown also saves `market.yml`, so a market mutation made in the last tick before shutdown is not lost.
 
-## 0.1.0 — source written, never compiled
+### Audited and left alone
+- `Trade.execute` is unchanged in shape: market stock is a unit counter, so a market trade decrements units
+  and a chest shop trade must remove the items from the live container; both roll the buyer's inventory
+  back from a snapshot on any failure. Payment is only stored in the seller's box after the goods are out.
+- Listing creation and cancellation move exactly `units * item.getAmount()` items in both directions.
+- `expire` returns units to the seller's collect box and refuses to expire when the box is full, so it
+  retries later instead of voiding the stock.
 
-- First version: admin shops, player shops, chest GUI, multi-payment listings, custom quantity, collect
-  box, transaction log, container protection, shop villagers.
-- Source written without a local compile.
+## 0.1.0 — chest shops (superseded)
+- First draft with chest shops as the main feature.
