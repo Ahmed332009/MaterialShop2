@@ -126,3 +126,9 @@ jobs:
           cat plugins/MaterialShop/shops.yml
           grep -q 'name: smoketest' plugins/MaterialShop/shops.yml || fail 'admin shop was not persisted'
           echo 'Smoke test OK'
+
+          # Annotations are readable through the API, which makes this evidence easy to review
+          # without downloading a multi-megabyte log.
+          SUMMARY=$(grep -E 'Starting Paper|Loading server plugin MaterialShop|MaterialShop enabled|Only players can use this|Admin shop smoketest created|Done \(' out.log \
+            | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-160 | tr '\n' '|')
+          echo "::notice title=Paper smoke test::${SUMMARY}" 
